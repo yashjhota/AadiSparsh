@@ -1,0 +1,8 @@
+{
+  "name": "Aadi Sparsh",
+  "description": "Multi-temple SaaS platform reconnecting Jain families with temple visits and Parmatma Pooja bookings, starting with Shri Adinath Bhagwan Jain Temple in Chickpet, Bengaluru.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
