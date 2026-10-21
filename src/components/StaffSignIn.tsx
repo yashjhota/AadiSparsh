@@ -25,16 +25,16 @@ export const StaffSignIn: React.FC<StaffSignInProps> = ({ onSuccess, onCancel })
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await sendOtp(mobileNumber);
-    if (success) {
+    const res = await sendOtp(mobileNumber);
+    if (res.success) {
       setOtpCode('');
     }
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await verifyOtp(mobileNumber, otpCode);
-    if (success) {
+    const res = await verifyOtp(mobileNumber, otpCode);
+    if (res.success) {
       setTimeout(() => {
         onSuccess();
       }, 700);
@@ -187,47 +187,49 @@ export const StaffSignIn: React.FC<StaffSignInProps> = ({ onSuccess, onCancel })
         )}
       </div>
 
-      {/* Developer Role Sandbox Session (For testing multi-tenant isolation without SMS credits) */}
-      <div className="bg-[#FAF7F2] border border-stone-200 rounded-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="text-xs uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
-            <Lock className="w-3.5 h-3.5 text-amber-800" />
-            Local Development Sandbox Session
+      {/* Developer Role Sandbox Session (For testing multi-tenant isolation without SMS credits - Only visible in DEV mode) */}
+      {import.meta.env.DEV && (
+        <div className="bg-[#FAF7F2] border border-stone-200 rounded-lg p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-wider text-stone-600 font-medium flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-amber-800" />
+              Local Development Sandbox Session
+            </div>
+            <span className="text-[11px] font-mono text-amber-800 bg-amber-100/60 px-2 py-0.5 rounded">
+              Development Only
+            </span>
           </div>
-          <span className="text-[11px] font-mono text-amber-800 bg-amber-100/60 px-2 py-0.5 rounded">
-            Audit & Test Harness
-          </span>
-        </div>
-        <p className="text-stone-600 text-xs leading-relaxed">
-          To audit and test multi-tenant permissions, RLS boundaries, and temple management without an
-          active SMS gateway, select a pre-seeded tenant role below to launch a local sandbox session:
-        </p>
+          <p className="text-stone-600 text-xs leading-relaxed">
+            To audit and test multi-tenant permissions, RLS boundaries, and temple management without an
+            active SMS gateway, select a pre-seeded tenant role below to launch a local sandbox session:
+          </p>
 
-        <div className="grid grid-cols-1 gap-2.5">
-          {DEV_TEST_PERSONAS.map((persona, idx) => (
-            <button
-              key={persona.title}
-              onClick={() => {
-                startDevSandboxSession(idx);
-                onSuccess();
-              }}
-              className="text-left p-3 bg-white rounded border border-stone-200 hover:border-amber-700/60 transition-colors group cursor-pointer"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-stone-900 group-hover:text-amber-800 transition-colors">
-                  {persona.title}
-                </span>
-                <span className="font-mono text-[11px] text-stone-500">
-                  {persona.profile.verified_mobile}
-                </span>
-              </div>
-              <div className="text-[11px] text-stone-500 mt-1">
-                {persona.description}
-              </div>
-            </button>
-          ))}
+          <div className="grid grid-cols-1 gap-2.5">
+            {DEV_TEST_PERSONAS.map((persona, idx) => (
+              <button
+                key={persona.title}
+                onClick={() => {
+                  startDevSandboxSession(idx);
+                  onSuccess();
+                }}
+                className="text-left p-3 bg-white rounded border border-stone-200 hover:border-amber-700/60 transition-colors group cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-stone-900 group-hover:text-amber-800 transition-colors">
+                    {persona.title}
+                  </span>
+                  <span className="font-mono text-[11px] text-stone-500">
+                    {persona.profile.verified_mobile}
+                  </span>
+                </div>
+                <div className="text-[11px] text-stone-500 mt-1">
+                  {persona.description}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

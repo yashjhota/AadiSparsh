@@ -11,7 +11,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
-    "test": "tsx scripts/test-foundation.ts"
+    "test": "tsx scripts/test-foundation.ts && tsx scripts/test-phase2a.ts && tsx scripts/test-phase2b.ts",
+    "test:phase2a": "tsx scripts/test-phase2a.ts",
+    "test:phase2b": "tsx scripts/test-phase2b.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

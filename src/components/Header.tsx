@@ -1,25 +1,29 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight, User, UserCheck } from 'lucide-react';
 
 interface HeaderProps {
   onPlanVisit: () => void;
+  onOpenGuide?: () => void;
   onNavigateToAdmin: () => void;
   onNavigateToHome: () => void;
+  onOpenFamilyPortal: () => void;
   currentRoute: 'home' | 'admin';
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onPlanVisit,
+  onOpenGuide,
   onNavigateToAdmin,
   onNavigateToHome,
+  onOpenFamilyPortal,
   currentRoute,
 }) => {
-  const { isAuthenticated, currentRole, signOut } = useAuth();
+  const { isAuthenticated, currentRole, currentUser, signOut } = useAuth();
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FDFBF7]/95 backdrop-blur-sm border-b border-stone-200/80 px-6 lg:px-12 py-3.5 transition-all">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-6">
+    <header className="sticky top-0 z-40 bg-[#FDFBF7]/95 backdrop-blur-sm border-b border-stone-200/80 px-4 sm:px-6 lg:px-12 py-3.5 transition-all">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         {/* Zone 1: Wordmark */}
         <button
           onClick={onNavigateToHome}
@@ -52,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
               Pooja Timings
             </button>
             <button
-              onClick={onPlanVisit}
+              onClick={onOpenGuide || onPlanVisit}
               className="whitespace-nowrap shrink-0 hover:text-stone-900 transition-colors cursor-pointer"
             >
               Visiting Guidelines
@@ -73,16 +77,46 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* Zone 3: Primary Action */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Zone 3: Actions */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {currentRoute === 'home' ? (
-            <button
-              onClick={onPlanVisit}
-              className="px-4 py-2 text-xs font-medium text-white bg-amber-800 hover:bg-amber-900 rounded shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
-            >
-              Plan Your Temple Visit
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <>
+              {/* Devotee / Family Portal Button */}
+              {isAuthenticated && currentRole === 'family' ? (
+                <button
+                  onClick={onOpenFamilyPortal}
+                  className="px-3 py-1.5 text-xs font-medium text-amber-950 bg-amber-100/70 hover:bg-amber-200/70 border border-amber-300 rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-amber-800" />
+                  <span>Family Profile</span>
+                </button>
+              ) : isAuthenticated && currentRole !== 'family' ? (
+                <button
+                  onClick={onNavigateToAdmin}
+                  className="px-3 py-1.5 text-xs font-medium text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Admin ({currentRole})</span>
+                </button>
+              ) : (
+                <button
+                  onClick={onOpenFamilyPortal}
+                  className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
+                >
+                  <User className="w-3.5 h-3.5 text-amber-800" />
+                  <span>Devotee Sign In</span>
+                </button>
+              )}
+
+              {/* Primary Call to Action */}
+              <button
+                onClick={onPlanVisit}
+                className="px-3.5 py-1.5 text-xs font-medium text-white bg-amber-800 hover:bg-amber-900 rounded shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Plan Your Visit</span>
+                <ArrowRight className="w-3.5 h-3.5 hidden sm:inline" />
+              </button>
+            </>
           ) : (
             <div className="flex items-center gap-3">
               <button

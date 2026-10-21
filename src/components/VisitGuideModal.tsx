@@ -1,12 +1,19 @@
 import React from 'react';
-import { Clock, MapPin, Sparkles, AlertCircle, X, Compass, ShieldCheck } from 'lucide-react';
+import { Clock, MapPin, Sparkles, AlertCircle, X, Compass, ShieldCheck, UserCheck, CheckCircle2 } from 'lucide-react';
 
 interface VisitGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenFamilyAuth?: () => void;
+  onOpenBooking?: () => void;
 }
 
-export const VisitGuideModal: React.FC<VisitGuideModalProps> = ({ isOpen, onClose }) => {
+export const VisitGuideModal: React.FC<VisitGuideModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenFamilyAuth,
+  onOpenBooking,
+}) => {
   if (!isOpen) return null;
 
   return (
@@ -100,18 +107,47 @@ export const VisitGuideModal: React.FC<VisitGuideModalProps> = ({ isOpen, onClos
           </ul>
         </div>
 
-        {/* 4. Transparent Online Registration Notice (Requirement 6) */}
-        <div className="p-4 bg-amber-50/70 rounded border border-amber-200/80 space-y-2 text-xs text-stone-700">
-          <div className="flex items-center gap-2 font-semibold text-amber-900">
-            <AlertCircle className="w-4 h-4 text-amber-800 shrink-0" />
-            <span>Online Family Booking Status</span>
+        {/* 4. Online Registration Status */}
+        <div className="p-4 bg-emerald-50/70 rounded border border-emerald-200/80 space-y-3 text-xs text-stone-700">
+          <div className="flex items-center gap-2 font-semibold text-emerald-950">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>Online Family Booking Engine Active</span>
           </div>
           <p className="leading-relaxed text-stone-600">
-            <strong>Online Family Pooja slot registrations are opening soon in Phase 2.</strong> The platform is currently operating in its foundational phase. No advance online reservation is required for daily morning darshan and visits—families are warmly welcomed to visit directly during the morning pooja window.
+            <strong>Online family pooja registrations are now open for Chickpet Shri Adinath Bhagwan Temple!</strong> To maintain tranquility and reverence in the inner sanctum, reservations are limited to 15 families per day with zero booking fees.
           </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {onOpenBooking && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenBooking();
+                }}
+                className="py-2.5 px-4 text-xs font-medium text-white bg-amber-800 hover:bg-amber-900 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                <span>Book Temple Visit Now</span>
+                <Clock className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {onOpenFamilyAuth && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenFamilyAuth();
+                }}
+                className="py-2 px-3 text-xs font-medium text-stone-700 hover:text-stone-900 bg-white border border-stone-300 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-stone-500" />
+                <span>Manage Family Profile / History</span>
+              </button>
+            )}
+          </div>
           <div className="text-[11px] text-stone-500 flex items-center gap-1.5 pt-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Daily family capacity coordination (15 families/day) will be enabled when online registration launches.</span>
+            <span>Daily capacity (15 families) and duplicate prevention enforced at database level.</span>
           </div>
         </div>
 

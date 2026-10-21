@@ -7,9 +7,11 @@ import {
   TempleMembership,
   AuditLog,
   UserRole,
+  Registration,
 } from '../types/database';
 import { aadiSparshRepository } from '../lib/supabase';
 import { DEV_TEST_PERSONAS } from '../lib/devData';
+import { formatDisplayDate, getKolkataNow } from '../lib/dateTime';
 import {
   Building2,
   MapPin,
@@ -31,6 +33,7 @@ import {
 
 type AdminTab =
   | 'overview'
+  | 'registrations'
   | 'organizations'
   | 'cities'
   | 'temples'
@@ -59,6 +62,12 @@ export const AdminConsole: React.FC = () => {
   const [temples, setTemples] = useState<Temple[]>([]);
   const [memberships, setMemberships] = useState<TempleMembership[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+
+  // Registrations filtering & inspection state
+  const [regDateFilter, setRegDateFilter] = useState<string>('');
+  const [regSearchTerm, setRegSearchTerm] = useState<string>('');
+  const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
 
   // Modals & form state
   const [editingTemple, setEditingTemple] = useState<Temple | null>(null);
@@ -105,18 +114,20 @@ export const AdminConsole: React.FC = () => {
     if (!currentRole) return;
     setLoading(true);
     try {
-      const [orgsData, citiesData, templesData, memsData, logsData] = await Promise.all([
+      const [orgsData, citiesData, templesData, memsData, logsData, regsData] = await Promise.all([
         aadiSparshRepository.getOrganizations(),
         aadiSparshRepository.getCities(),
         aadiSparshRepository.getTemplesForActor(currentRole, activeTempleId),
         aadiSparshRepository.getMemberships(currentRole, activeTempleId),
         aadiSparshRepository.getAuditLogs(currentRole, activeTempleId),
+        aadiSparshRepository.getStaffRegistrations(currentRole, activeTempleId),
       ]);
       setOrganizations(orgsData);
       setCities(citiesData);
       setTemples(templesData);
       setMemberships(memsData);
       setAuditLogs(logsData);
+      setRegistrations(regsData);
     } catch (err: unknown) {
       setNotice({ type: 'error', message: (err as Error).message });
     } finally {
@@ -291,23 +302,25 @@ export const AdminConsole: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Persona Switcher Buttons to test RLS in real time */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-stone-500 mr-1">Switch Persona:</span>
-          {DEV_TEST_PERSONAS.map((p, idx) => (
-            <button
-              key={p.role}
-              onClick={() => startDevSandboxSession(idx)}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
-                currentRole === p.role && activeTempleId === p.templeId
-                  ? 'bg-amber-800 text-white'
-                  : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
-              }`}
-            >
-              {p.role === 'superadmin' ? 'Superadmin' : p.role === 'temple_admin' ? 'Temple Admin' : p.role === 'temple_manager' ? 'Manager' : 'Family'}
-            </button>
-          ))}
-        </div>
+        {/* Live Persona Switcher Buttons to test RLS in real time (Development Only) */}
+        {import.meta.env.DEV && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-stone-500 mr-1">Switch Persona (DEV):</span>
+            {DEV_TEST_PERSONAS.map((p, idx) => (
+              <button
+                key={p.role}
+                onClick={() => startDevSandboxSession(idx)}
+                className={`px-2.5 py-1 text-xs font-medium rounded transition-colors cursor-pointer ${
+                  currentRole === p.role && activeTempleId === p.templeId
+                    ? 'bg-amber-800 text-white'
+                    : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                }`}
+              >
+                {p.role === 'superadmin' ? 'Superadmin' : p.role === 'temple_admin' ? 'Temple Admin' : p.role === 'temple_manager' ? 'Manager' : 'Family'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Global Notification Banner */}
@@ -365,6 +378,16 @@ export const AdminConsole: React.FC = () => {
             }`}
           >
             Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('registrations')}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'registrations'
+                ? 'border-amber-800 text-amber-900 font-semibold'
+                : 'border-transparent text-stone-600 hover:text-stone-900'
+            }`}
+          >
+            Registrations ({registrations.length})
           </button>
           <button
             onClick={() => setActiveTab('organizations')}
@@ -549,6 +572,307 @@ export const AdminConsole: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB: REGISTRATIONS & CAPACITY MANAGEMENT --- */}
+      {activeTab === 'registrations' && (
+        <div className="space-y-6">
+          {/* Header & Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-serif text-lg font-medium text-stone-900">
+                Pooja Registrations & Capacity Management
+              </h3>
+              <p className="text-xs text-stone-500">
+                Authoritative devotee family bookings, member attendance counts, and slot availability.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadAllData}
+                className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white border border-stone-300 rounded hover:bg-stone-50 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Metric Cards */}
+          {(() => {
+            const todayStr = getKolkataNow().dateStr;
+            const targetDate = regDateFilter || todayStr;
+            const targetDateRegs = registrations.filter((r) => r.visit_date === targetDate);
+            const activeOnDate = targetDateRegs.filter((r) => r.status === 'upcoming');
+            const totalMembersOnDate = activeOnDate.reduce((sum, r) => sum + r.member_count, 0);
+            const activeCapacity = 15;
+            const remainingOnDate = Math.max(0, activeCapacity - activeOnDate.length);
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-lg border border-stone-200 space-y-1">
+                  <div className="text-xs uppercase tracking-wider text-stone-500 font-medium">
+                    Active Family Bookings
+                  </div>
+                  <div className="font-mono tabular-nums text-2xl font-semibold text-stone-900">
+                    {activeOnDate.length} <span className="text-xs text-stone-400 font-normal">/ {activeCapacity}</span>
+                  </div>
+                  <div className="text-[11px] text-stone-500">For {formatDisplayDate(targetDate)}</div>
+                </div>
+
+                <div className="bg-white p-5 rounded-lg border border-stone-200 space-y-1">
+                  <div className="text-xs uppercase tracking-wider text-stone-500 font-medium">
+                    Available Slots
+                  </div>
+                  <div className="font-mono tabular-nums text-2xl font-semibold text-emerald-700">
+                    {remainingOnDate}
+                  </div>
+                  <div className="text-[11px] text-stone-500">Remaining family slots</div>
+                </div>
+
+                <div className="bg-white p-5 rounded-lg border border-stone-200 space-y-1">
+                  <div className="text-xs uppercase tracking-wider text-stone-500 font-medium">
+                    Expected Devotees
+                  </div>
+                  <div className="font-mono tabular-nums text-2xl font-semibold text-amber-900">
+                    {totalMembersOnDate}
+                  </div>
+                  <div className="text-[11px] text-stone-500">Attending family members</div>
+                </div>
+
+                <div className="bg-white p-5 rounded-lg border border-stone-200 space-y-1">
+                  <div className="text-xs uppercase tracking-wider text-stone-500 font-medium">
+                    Total In System
+                  </div>
+                  <div className="font-mono tabular-nums text-2xl font-semibold text-stone-800">
+                    {registrations.length}
+                  </div>
+                  <div className="text-[11px] text-stone-500">All dates (scoped)</div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Filters Bar */}
+          <div className="bg-white p-4 rounded-lg border border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div>
+                <label className="block text-[11px] font-semibold text-stone-600 mb-1">
+                  Filter by Visit Date:
+                </label>
+                <input
+                  type="date"
+                  value={regDateFilter}
+                  onChange={(e) => setRegDateFilter(e.target.value)}
+                  className="py-1.5 px-2.5 text-xs bg-stone-50 border border-stone-300 rounded focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-800"
+                />
+              </div>
+
+              {regDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setRegDateFilter('')}
+                  className="self-end py-1.5 px-2.5 text-[11px] text-stone-600 hover:text-stone-900 border border-stone-200 rounded cursor-pointer"
+                >
+                  Clear Date Filter (Show All)
+                </button>
+              )}
+            </div>
+
+            <div className="w-full sm:w-72">
+              <label className="block text-[11px] font-semibold text-stone-600 mb-1">
+                Search Devotee / Registration:
+              </label>
+              <input
+                type="text"
+                placeholder="Search Reg #, devotee name, phone..."
+                value={regSearchTerm}
+                onChange={(e) => setRegSearchTerm(e.target.value)}
+                className="w-full py-1.5 px-2.5 text-xs bg-stone-50 border border-stone-300 rounded focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-800"
+              />
+            </div>
+          </div>
+
+          {/* Registrations Table */}
+          {(() => {
+            let filtered = [...registrations];
+            if (regDateFilter) {
+              filtered = filtered.filter((r) => r.visit_date === regDateFilter);
+            }
+            if (regSearchTerm.trim()) {
+              const term = regSearchTerm.toLowerCase().trim();
+              filtered = filtered.filter(
+                (r) =>
+                  r.registration_number.toLowerCase().includes(term) ||
+                  (r.profile?.full_name && r.profile.full_name.toLowerCase().includes(term)) ||
+                  (r.profile?.verified_mobile && r.profile.verified_mobile.includes(term)) ||
+                  r.occasion.toLowerCase().includes(term)
+              );
+            }
+
+            if (filtered.length === 0) {
+              return (
+                <div className="bg-white p-8 rounded-lg border border-stone-200 text-center text-xs text-stone-500 space-y-2">
+                  <Calendar className="w-8 h-8 text-stone-300 mx-auto" />
+                  <p className="font-medium text-stone-700">No registrations found matching criteria.</p>
+                  <p>Try clearing filters or selecting another date.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 font-medium">
+                    <tr>
+                      <th className="px-4 py-3">Registration #</th>
+                      <th className="px-4 py-3">Visit Date</th>
+                      <th className="px-4 py-3">Devotee Family</th>
+                      <th className="px-4 py-3">Members</th>
+                      <th className="px-4 py-3">Occasion</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {filtered.map((reg) => (
+                      <tr key={reg.id} className="hover:bg-stone-50/60 transition-colors">
+                        <td className="px-4 py-3 font-mono font-semibold text-stone-900">
+                          {reg.registration_number}
+                        </td>
+                        <td className="px-4 py-3 text-stone-800">
+                          <div>{formatDisplayDate(reg.visit_date)}</div>
+                          <span className="text-[10px] text-stone-400 font-mono">6:00 AM – 8:00 AM</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-stone-900">
+                            {reg.profile?.full_name || 'Devotee Family'}
+                          </div>
+                          <div className="text-[11px] font-mono text-stone-500">
+                            {reg.profile?.verified_mobile}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-stone-800">
+                          {reg.member_count} devotees
+                        </td>
+                        <td className="px-4 py-3 capitalize text-stone-700">
+                          {reg.occasion.replace(/_/g, ' ')}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                              reg.status === 'upcoming'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : reg.status === 'cancelled'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {reg.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRegistration(reg)}
+                            className="text-amber-800 hover:text-amber-950 font-medium underline text-xs cursor-pointer"
+                          >
+                            View Details
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Selected Registration Inspection Modal */}
+      {selectedRegistration && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div className="bg-white rounded-lg border border-stone-200 max-w-lg w-full p-6 space-y-4 shadow-xl relative my-6">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="space-y-0.5">
+                <span className="text-[10px] uppercase font-semibold text-stone-400">Registration Detail</span>
+                <h4 className="font-mono text-base font-bold text-stone-900">
+                  {selectedRegistration.registration_number}
+                </h4>
+              </div>
+              <button
+                onClick={() => setSelectedRegistration(null)}
+                className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-stone-50 rounded">
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Visit Date</span>
+                  <strong className="text-stone-900">{formatDisplayDate(selectedRegistration.visit_date)}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Status</span>
+                  <span className="font-semibold uppercase text-stone-900">{selectedRegistration.status}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Devotee Head</span>
+                  <span className="font-medium text-stone-900">{selectedRegistration.profile?.full_name}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Verified Phone</span>
+                  <span className="font-mono">{selectedRegistration.profile?.verified_mobile}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Attending Count</span>
+                  <span>{selectedRegistration.member_count} devotees</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block text-[11px]">Occasion</span>
+                  <span className="capitalize">{selectedRegistration.occasion.replace(/_/g, ' ')}</span>
+                </div>
+              </div>
+
+              {selectedRegistration.remarks && (
+                <div className="p-2.5 bg-stone-50 rounded border border-stone-200">
+                  <span className="font-semibold text-stone-700">Devotee Remarks: </span>
+                  {selectedRegistration.remarks}
+                </div>
+              )}
+
+              {selectedRegistration.cancellation_reason && (
+                <div className="p-2.5 bg-red-50 text-red-900 rounded border border-red-200">
+                  <span className="font-semibold">Cancellation Reason: </span>
+                  {selectedRegistration.cancellation_reason}
+                </div>
+              )}
+
+              <div className="text-[11px] text-stone-500 pt-1">
+                Created: {new Date(selectedRegistration.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedRegistration(null)}
+                className="px-4 py-2 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

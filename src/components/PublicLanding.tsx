@@ -6,9 +6,15 @@ import { MapPin, Clock, Calendar, Compass, Sparkles, ArrowRight, ShieldCheck, He
 
 interface PublicLandingProps {
   onOpenStaffPortal: () => void;
+  onOpenBooking: () => void;
+  onOpenFamilyAuth: () => void;
 }
 
-export const PublicLanding: React.FC<PublicLandingProps> = ({ onOpenStaffPortal }) => {
+export const PublicLanding: React.FC<PublicLandingProps> = ({
+  onOpenStaffPortal,
+  onOpenBooking,
+  onOpenFamilyAuth,
+}) => {
   const [temple, setTemple] = useState<Temple | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isVisitModalOpen, setIsVisitModalOpen] = useState<boolean>(false);
@@ -239,6 +245,8 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onOpenStaffPortal 
       <VisitGuideModal
         isOpen={isVisitModalOpen}
         onClose={() => setIsVisitModalOpen(false)}
+        onOpenBooking={onOpenBooking}
+        onOpenFamilyAuth={onOpenFamilyAuth}
       />
     </div>
   );
