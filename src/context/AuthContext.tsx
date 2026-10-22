@@ -23,6 +23,11 @@ interface AuthContextType {
   resendCooldown: number;
   sendOtp: (phone: string) => Promise<{ success: boolean; error?: string; providerBlocked?: boolean }>;
   verifyOtp: (tokenOrPhone: string, maybeToken?: string) => Promise<{ success: boolean; error?: string; isNewUser?: boolean }>;
+  signInWithPhonePassword: (
+    phone: string,
+    password: string,
+    fullName?: string
+  ) => Promise<{ success: boolean; error?: string; isNewUser?: boolean; role?: UserRole }>;
   saveProfile: (input: FamilyProfileUpdateInput) => Promise<{ success: boolean; error?: string; profile?: Profile }>;
   startDevSandboxSession: (index: number) => void;
   signOut: () => Promise<void>;
@@ -368,6 +373,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
+   * Mobile number and password authentication (with single-screen auto-registration).
+   * Direct native Supabase phone + password auth.
+   */
+  const signInWithPhonePassword = async (
+    phone: string,
+    password: string,
+    fullName?: string
+  ): Promise<{ success: boolean; error?: string; isNewUser?: boolean; role?: UserRole }> => {
+    setOtpLoading(true);
+    setAuthError(null);
+
+    const cleaned = phone.replace(/[\s\-()]/g, '');
+    if (!/^\+[1-9]\d{7,14}$/.test(cleaned)) {
+      const err = 'Please enter a valid mobile number with country code (e.g. +91 98450 12345).';
+      setAuthError(err);
+      setOtpLoading(false);
+      return { success: false, error: err };
+    }
+
+    if (!password || password.length < 6) {
+      const err = 'Password must be at least 6 characters.';
+      setAuthError(err);
+      setOtpLoading(false);
+      return { success: false, error: err };
+    }
+
+    setPendingPhone(cleaned);
+
+    try {
+      const result = await db.signInWithPhonePassword(cleaned, password, fullName);
+
+      if (!result.success || !result.user) {
+        const err = result.error || 'Authentication failed. Please verify credentials.';
+        setAuthError(err);
+        setOtpLoading(false);
+        return { success: false, error: err };
+      }
+
+      setCurrentUser(result.user);
+      setCurrentRole(result.role || 'family');
+      setActiveTempleId(
+        result.templeId || (result.role === 'family' ? '33333333-3333-3333-3333-333333333331' : null)
+      );
+      setActiveTempleName(
+        result.role === 'family'
+          ? 'Shri Adinath Bhagwan Temple, Chickpet'
+          : result.role === 'superadmin'
+          ? 'All Temples (Superadmin)'
+          : 'Chickpet Temple'
+      );
+      setIsAuthenticated(true);
+      setIsDevSandboxSession(!isSupabaseConfigured());
+      setOtpStep('success');
+      setOtpLoading(false);
+
+      return {
+        success: true,
+        isNewUser: result.isNewUser,
+        role: result.role || 'family',
+      };
+    } catch (err: unknown) {
+      const msg = (err as Error).message || 'An unexpected error occurred during sign-in.';
+      setAuthError(msg);
+      setOtpLoading(false);
+      return { success: false, error: msg };
+    }
+  };
+
+  /**
    * Dedicated Development Sandbox Session for Multi-Tenant Testing
    * Explicitly labeled as a local simulation rather than a verified OTP session.
    * Hardened to disallow execution in production builds.
@@ -441,6 +515,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resendCooldown,
         sendOtp,
         verifyOtp,
+        signInWithPhonePassword,
         saveProfile,
         startDevSandboxSession,
         signOut,

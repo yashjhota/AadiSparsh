@@ -1,138 +1,129 @@
-# Aadi Sparsh — Phase 1: Foundation & Architecture
+# Unified Mobile & Password Authentication Implementation Plan
 
-Technical foundation and multi-tenant architecture for **Aadi Sparsh**, a SaaS platform designed to reconnect Jain families with temples through visits and Parmatma Pooja registrations, starting with Shri Adinath Bhagwan Jain Temple in Chickpet, Bengaluru.
+Transition the Aadi Sparsh authentication architecture from mobile OTP to a streamlined, unified mobile number and password sign-in experience for all users (devotee families and temple staff), with automated role detection, single-screen auto-registration, and Supabase Auth database synchronization.
+
+---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural decisions were confirmed during the clarification interview:
-
-- **Confirmed Runtime Architecture**: Vite + React 19 frontend with Node.js/Express backend service and `@supabase/supabase-js` client SDK.
-- **Confirmed Connectivity Mode**: Real Supabase client connectivity with an integrated development fallback mode so the application runs, seeds, tests, and demonstrates multi-tenancy and RLS concepts immediately in AI Studio while supporting instant connection to any live Supabase project.
-- **Confirmed Visual Direction**: Ivory marble (`#FDFBF7`), warm limestone (`#F4EFEA`), deep charcoal ink (`#1C1917`), and warm sacred saffron/gold accents (`#B45309`, `#D97706`), strictly adhering to anti-slop rules, zero-pill discipline, and calm Jain aesthetics.
-- **Confirmed Auth & OTP Flow**: Standard Supabase Phone OTP auth foundation with a test verification utility for development environments without requiring active SMS credits.
+> The following architectural decisions were confirmed via interactive clarification:
+> - **Unified Sign-In Flow**: Both temple staff and devotee families will use a unified mobile number and password login interface that automatically detects active staff roles versus devotee status and routes accordingly.
+> - **Single-Screen Seamless Registration**: Entering an unregistered mobile number with a password seamlessly registers the user account without requiring fragmented multi-step tabs.
+> - **Native Supabase Phone & Password Auth**: Utilizes `supabase.auth.signInWithPassword({ phone, password })` and `supabase.auth.signUp({ phone, password })` directly against Supabase GoTrue Auth, eliminating SMS gateway dependencies while preserving full session persistence and RLS security.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Establishes the multi-tenant data model, security perimeter, and administrative management interface for temples across cities and organizations. Supports dynamic temple configurations (timings, daily capacities, closure days, rolling booking windows) without hardcoded business rules.
-- **Target Audience / Personas**:
-  - *Superadmin*: Platform administrators managing organizations, cities, temples, and assigning administrators.
-  - *Temple Administrator*: Authorized staff managing specific temple operational settings and staff roles.
-  - *Temple Manager*: Day-to-day temple operational supervisors with scoped permissions.
-  - *Families / Devotees*: Public visitors exploring participating temples and preparing for mobile-verified Parmatma Pooja bookings.
-- **Key Value**: A single codebase powering multi-city temple operations with strict tenant isolation, auditable configuration changes, and a rock-solid security foundation ready for Phase 2 booking transactions.
+- **What It Does**: Replaces the phone OTP flow with a secure, instant mobile number and password authentication modal. Devotees and staff enter their mobile number (with country code) and password. New numbers are registered seamlessly with name and profile initialization; existing accounts authenticate instantly. The system inspects database memberships to assign the appropriate role (`superadmin`, `temple_admin`, `temple_manager`, or `family`).
+- **Target Audience / Personas**: 
+  1. *Devotee Families*: Booking morning Parmatma Pooja and managing family visit reservations.
+  2. *Temple Staff & Trustees*: Administering capacities, viewing devotee registrations, and managing operational closures.
+- **Key Value**: Immediate, reliable authentication without reliance on external SMS delivery gateways or OTP delivery delays, while keeping the door open to re-introducing OTP in future phases.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### Key User Flows
-1. **Public Discovery View**:
-   - Serene institutional banner with sacred Jain iconography, platform mission statement, and multi-temple discovery.
-   - Temple card showing Shri Adinath Bhagwan Temple (Chickpet, Bengaluru) populated from dynamic database settings (Pooja timings: 06:00–08:00, capacity: 15 families/day, Sunday closure rule), not hardcoded strings.
-   - Quick selector to preview how additional cities (e.g., Chennai, Mumbai) and temples seamlessly appear under the same architecture.
-2. **Staff & Administrator Sign-In**:
-   - Clean mobile number OTP interface with clear status indications (Requesting OTP, Enter 6-digit Code, Verifying, Authenticated).
-   - In dev mode, includes a quick test credential selector to experience different role perspectives (Superadmin, Chickpet Temple Admin, Temple Manager).
-3. **Administrative Console**:
-   - Sidebar workspace with breadcrumb navigation.
-   - Active Views:
-     - **Overview**: System metrics (organizations, active cities, temples, assigned staff, audit log volume).
-     - **Organizations**: Organization listing, tenant health, and creation modal.
-     - **Cities**: City management across states and timezones (Bengaluru, Chennai).
-     - **Temples**: Comprehensive configuration inspector for Chickpet and other temples (Pooja start/end times, rolling booking window, daily capacity, booking cutoff time, registration toggles).
-     - **Staff & Roles**: Membership assignment matrix with strict role hierarchy enforcement.
-     - **Audit Logs**: Tamper-proof activity stream tracking who changed what (`actor_user_id`, `before_data`, `after_data`, `action`).
-     - **Database & Migrations**: Live SQL schema inspector, migration status, and seed runner.
+- **Unified Authentication Modal**:
+  - Calm ivory (`#FDFBF7`), antique charcoal (`#1C1917`), and warm saffron/gold accents (`#92400E` / `#B45309`) adhering to the Museum & Institutional design system.
+  - Single, serene modal accessible from the header ("Sign In") and booking flows ("Book Temple Visit").
+  - Country code dropdown (+91 India default) with auto-formatted mobile number input.
+  - Password input with visible/hidden toggle (`Eye` / `EyeOff`) and minimum security criteria.
+  - Optional full name field (revealed or prefilled for registration).
+  - Clean error states for invalid passwords, malformed phone numbers, or network timeouts.
+- **Role-Aware Auto Routing**:
+  - After successful authentication, if the user holds an active staff membership in `temple_memberships`, the UI shows their assigned role badge (`Temple Administrator`, `Temple Manager`, or `Superadmin`) and offers direct navigation to the Staff Administration Console.
+  - If the user is a devotee family, they are immediately welcomed into their family profile and booking workspace.
 
-### Visual Identity & Theme
-- **Aesthetic Direction**: Curatorial, serene, sacred, and respectful of Jain traditions. Alabaster, warm stone, and refined typography.
-- **Color Palette**:
-  - Neutral Canvas (60%): Warm Ivory (`#FDFBF7`), Pure Alabaster (`#FAF7F2`), Neutral Slate (`#F5F0E8`).
-  - Structural Surfaces (30%): Stone card surfaces (`#FFFFFF`), hairline borders (`#E7E0D6`), muted text (`#78716C`), deep ink headers (`#1C1917`).
-  - Accent Budget (10%): Warm Saffron (`#B45309`), Sacred Amber (`#D97706`), Deep Ochre (`#78350F`).
-- **Typography & Anti-Slop Discipline**:
-  - Display Font: High-contrast refined serif (`Cinzel` / `Playfair Display` or system serif fallback) for titles.
-  - Body Prose: Clean, legible sans-serif (`Plus Jakarta Sans` or modern sans fallback).
-  - Tabular Data: Monospace tabular numerals (`font-mono tabular-nums`) for timestamps, capacities, and timing slots.
-  - Zero-Pill Rule: No capsule badges or pill islands; metadata displayed using clean unboxed text separated by typographic middots (`·`).
-  - No fake AI jargon, no bottom telemetry tickers, no pulsing green dots.
+```
++─────────────────────────────────────────────────────────────────+
+|  AADI SPARSH • TEMPLE PORTAL                                [X] |
+|                                                                 |
+|  Sign In to Aadi Sparsh                                         |
+|  Enter your mobile number and password to access pooja bookings |
+|  and temple governance.                                         |
+|  ─────────────────────────────────────────────────────────────  |
+|                                                                 |
+|  Mobile Number                                                  |
+|  [ +91 v ] [ 98450 12345                              ]        |
+|                                                                 |
+|  Password                                                       |
+|  [ •••••••••••••••••                                   ] [Eye]  |
+|                                                                 |
+|  Full Name (required for first-time registration)               |
+|  [ Nemichand Shah                                     ]        |
+|                                                                 |
+|  [   Sign In / Register Account                             ]   |
+|                                                                 |
+|  Protected by Supabase Auth & PostgreSQL Row Level Security     |
++─────────────────────────────────────────────────────────────────+
+```
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-### 1. Dual-Mode Supabase Client (Real + Development Seed Fallback)
-- *Chosen Approach*: Implement a unified Supabase client layer. If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are provided in environment variables, queries execute against live Supabase PostgreSQL. If unconfigured or offline, an in-memory transactional mock mirroring the exact PostgreSQL schema, RLS policies, and seed data serves the interface seamlessly.
-- *Why*: Allows immediate evaluation, end-to-end testing, and demonstration in AI Studio without blocking on external credential setup, while retaining 100% production compatibility with Supabase.
-- *Alternatives Considered*: Hard failure when credentials are blank (rejected because it breaks the preview experience).
-
-### 2. Version-Controlled SQL Migrations & Strict RLS
-- *Chosen Approach*: Store production SQL migrations in `/supabase/migrations/` (`001_initial_schema.sql`, `002_rls_policies.sql`, `003_seed_data.sql`).
-- *Security*: RLS enabled on all 6 tables. Helper functions `auth.uid()`, `get_user_role()`, and membership checks enforce tenant isolation. Service-role keys are strictly forbidden in client-side code.
-
-### 3. Server-Side Express API + Migration Helper
-- *Chosen Approach*: Lightweight Express API running on port 3000 alongside Vite to handle server-side schema verification, migration viewing, and secure server-to-server operations.
+- **Decision 1: Native Supabase Phone + Password Auth**
+  - *Approach*: Use Supabase Auth's native phone provider with password support (`supabase.auth.signInWithPassword({ phone, password })`).
+  - *Why*: Standard GoTrue endpoint, cryptographically hashes passwords with bcrypt/argon2 in `auth.users`, anchors `auth.uid()` to `profiles.id`, and respects all existing foreign keys and RLS policies.
+  - *Fallback*: In development or local sandbox mode, `DevMemoryStore` verifies hashed/secure credentials and maintains matching session state.
+- **Decision 2: Automated Role Resolution**
+  - *Approach*: Upon session establishment, query `temple_memberships` joined with `temples` to determine highest active privilege.
+  - *Why*: Prevents client-side role tampering while avoiding separate, redundant login screens for staff and families.
+- **Decision 3: Preserving Phone Number Immutability**
+  - *Approach*: Keep the existing `trigger_protect_verified_mobile` on `public.profiles`. The verified mobile number remains strictly tied to the authenticated identity.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### System Architecture Diagram
-
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                          Aadi Sparsh Web App                           │
-│                                                                        │
-│   ┌───────────────────────────┐      ┌─────────────────────────────┐   │
-│   │    Public Portal View     │      │     Admin Console View      │   │
-│   │  - Temple Discovery       │      │  - Overview & Organizations │   │
-│   │  - Configurable Details   │      │  - Cities & Temples Config  │   │
-│   │  - Mobile OTP Sign-in     │      │  - Staff & Roles Hierarchy  │   │
-│   │  - Future Booking Notice  │      │  - Tamper-proof Audit Logs  │   │
-│   └─────────────┬─────────────┘      └──────────────┬──────────────┘   │
-│                 │                                   │                  │
-│                 └─────────────────┬─────────────────┘                  │
-│                                   ▼                                    │
-│                    ┌─────────────────────────────┐                     │
-│                    │     Supabase Client SDK     │                     │
-│                    │  - Real / Dev Fallback Hook │                     │
-│                    │  - Auth & Role Context      │                     │
-│                    └──────────────┬──────────────┘                     │
-└───────────────────────────────────┼────────────────────────────────────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
-    ┌───────────────────────────┐       ┌────────────────────────────┐
-    │     Supabase Backend      │       │     Express Dev Server     │
-    │  - PostgreSQL 15+         │       │  - Port 3000 API Proxy     │
-    │  - Supabase Auth (SMS OTP)│       │  - Migration Status & Docs │
-    │  - Row Level Security     │       │  - Dev Seed Scripts        │
-    └───────────────────────────┘       └────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    Unified Auth Modal UI                     │
+│  - Mobile Number (E.164) & Password                          │
+│  - Single-Screen Sign In / Auto-Registration                 │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     AuthContext & Supabase                   │
+│  - supabase.auth.signInWithPassword({ phone, password })    │
+│  - Auto-Fallback to signUpWithPassword on UserNotFound       │
+│  - Secure session token in localStorage / cookies            │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│               PostgreSQL Schema & RLS Engine                 │
+│  - auth.users (phone, encrypted_password)                    │
+│  - public.profiles (id = auth.uid(), verified_mobile)        │
+│  - public.temple_memberships (role-based staff detection)    │
+│  - 006_phone_password_auth.sql migration                     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Relational Schema & Tables
-1. **`organizations`**: `id` (UUID), `name`, `slug` (unique), `status`, `created_at`, `updated_at`.
-2. **`cities`**: `id` (UUID), `organization_id` (FK), `name`, `state`, `country`, `timezone`, `created_at`, `updated_at`.
-3. **`temples`**: `id` (UUID), `organization_id` (FK), `city_id` (FK), `name`, `slug`, `address`, `timezone` (default `'Asia/Kolkata'`), `pooja_start_time` (`'06:00'`), `pooja_end_time` (`'08:00'`), `daily_family_capacity` (default 15), `registration_enabled` (boolean), `rolling_booking_months` (default 6), `booking_cutoff_time` (`'18:00'`), `status`, `created_at`, `updated_at`.
-4. **`profiles`**: `id` (UUID FK to `auth.users`), `full_name`, `verified_mobile`, `locality`, `city`, `state`, `country`, `created_at`, `updated_at`.
-5. **`temple_memberships`**: `id` (UUID), `user_id` (FK), `organization_id` (FK), `temple_id` (FK, nullable for org-level admins), `role` (`'superadmin' | 'temple_admin' | 'temple_manager' | 'family'`), `status`, `created_at`, `updated_at`. Unique constraint on `(user_id, organization_id, temple_id)`.
-6. **`audit_logs`**: `id` (UUID), `actor_user_id` (FK), `organization_id` (FK), `temple_id` (FK, nullable), `entity_type`, `entity_id`, `action`, `before_data` (JSONB), `after_data` (JSONB), `created_at`. No direct update/delete policies for any user.
+### Proposed Changes:
 
-### Row Level Security (RLS) Policy Summary
-- `temples`: Public read for active temples where `registration_enabled = true` (limited view); full manage for Superadmins and assigned Temple Admins.
-- `organizations` & `cities`: Read for authenticated users; write restricted to Superadmin.
-- `profiles`: Read/write restricted to the profile owner (`auth.uid() = id`), with read-only access for assigned temple admins/managers to verified contact data when authorized.
-- `temple_memberships`: Read own membership; write only by Superadmins and Temple Admins (for their assigned temples).
-- `audit_logs`: Insert allowed for server/service roles and logged user actions via database trigger; read restricted to Superadmin and Temple Admin for their own temple.
+1. **Database Migration (`supabase/migrations/006_phone_password_auth.sql`)**:
+   - Ensures phone provider configuration notes and helper functions.
+   - Syncs `supabase/full_schema_migration.sql`.
+2. **Repository & Client Auth Layer (`src/lib/supabase.ts` & `src/context/AuthContext.tsx`)**:
+   - Add `signInWithPhonePassword(phone: string, password: string)`
+   - Add `signUpWithPhonePassword(phone: string, password: string, fullName?: string)`
+   - Auto-detect roles via `getMembershipsForUser` upon sign-in.
+   - Update `DevMemoryStore` with password support for default accounts.
+3. **UI Modernization**:
+   - Update `FamilyAuthModal.tsx` into a streamlined `UnifiedAuthModal.tsx` (or update in-place).
+   - Update `StaffSignIn.tsx` and `Header.tsx` to link seamlessly to the unified mobile/password flow.
+4. **Automated Verification**:
+   - Update test suites (`scripts/test-phase2a.ts` and `scripts/test-phase2b.ts`) to test mobile + password sign-in, auto-registration, role detection, and RLS integrity.
 
 ---
 
-## 5. Verification & Acceptance Plan
-1. **Compilation**: Run `compile_applet` to ensure error-free TypeScript and Vite build.
-2. **Migration Files**: Ensure all SQL migrations exist in `/supabase/migrations/` and can be copied or executed directly in the Supabase SQL editor.
-3. **Seed Scripts**: Verify development seed script generates Chickpet, Bengaluru as the first temple with configurable attributes.
-4. **Multi-Tenancy Verification**: Ensure adding additional cities (Chennai) and temples works seamlessly in the UI.
-5. **Phase 2 Boundary Guard**: Ensure booking and CRM features are clearly documented as coming in Phase 2, with no false mock booking mechanisms.
+## Verification Plan
+
+- `tsc --noEmit` & `npm run lint`: Verify 0 TypeScript compilation or lint errors.
+- `vite build`: Verify production bundle builds cleanly.
+- `npm test`: Run full automated verification suite confirming mobile+password sign in, auto-registration, role resolution, and booking engine persistence.

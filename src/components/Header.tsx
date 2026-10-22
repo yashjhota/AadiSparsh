@@ -104,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
                 >
                   <User className="w-3.5 h-3.5 text-amber-800" />
-                  <span>Devotee Sign In</span>
+                  <span>Sign In</span>
                 </button>
               )}
 

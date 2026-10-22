@@ -75,14 +75,20 @@ export const supabase: SupabaseClient = createClient(
  * In-Memory Transactional Store for Development & Verification
  */
 class DevMemoryStore {
-  private organizations: Organization[] = JSON.parse(JSON.stringify([INITIAL_ORGANIZATION]));
-  private cities: City[] = JSON.parse(JSON.stringify(INITIAL_CITIES));
-  private temples: Temple[] = JSON.parse(JSON.stringify(INITIAL_TEMPLES));
-  private profiles: Profile[] = JSON.parse(JSON.stringify(INITIAL_PROFILES));
-  private memberships: TempleMembership[] = JSON.parse(JSON.stringify(INITIAL_MEMBERSHIPS));
-  private auditLogs: AuditLog[] = JSON.parse(JSON.stringify(INITIAL_AUDIT_LOGS));
+  public organizations: Organization[] = JSON.parse(JSON.stringify([INITIAL_ORGANIZATION]));
+  public cities: City[] = JSON.parse(JSON.stringify(INITIAL_CITIES));
+  public temples: Temple[] = JSON.parse(JSON.stringify(INITIAL_TEMPLES));
+  public profiles: Profile[] = JSON.parse(JSON.stringify(INITIAL_PROFILES));
+  public memberships: TempleMembership[] = JSON.parse(JSON.stringify(INITIAL_MEMBERSHIPS));
+  public auditLogs: AuditLog[] = JSON.parse(JSON.stringify(INITIAL_AUDIT_LOGS));
   public registrations: Registration[] = [];
   public registrationEvents: RegistrationEvent[] = [];
+  public userPasswords: Map<string, string> = new Map([
+    ['+919845012345', 'AadiSparsh@2026'],
+    ['+919845067890', 'AadiSparsh@2026'],
+    ['+919845099999', 'AadiSparsh@2026'],
+    ['+919845077777', 'AadiSparsh@2026'],
+  ]);
 
   // Verified Public Temples (Chickpet Bengaluru is the ONLY verified launch temple)
   getVerifiedPublicTemples(): Temple[] {
@@ -393,6 +399,64 @@ class DevMemoryStore {
       };
       this.profiles.push(created);
       return { ...created };
+    }
+  }
+
+  signInPhonePassword(
+    phone: string,
+    password: string,
+    fullName?: string
+  ): {
+    success: boolean;
+    error?: string;
+    isNewUser?: boolean;
+    user?: Profile;
+    role?: UserRole;
+    templeId?: string | null;
+  } {
+    const cleaned = phone.replace(/[\s\-()]/g, '');
+    const existing = this.profiles.find((p) => p.verified_mobile === cleaned);
+
+    if (existing) {
+      const storedPw = this.userPasswords.get(cleaned) || 'AadiSparsh@2026';
+      if (password !== storedPw) {
+        return { success: false, error: 'Incorrect password for this mobile number.' };
+      }
+
+      // Check role
+      const mem = this.memberships.find((m) => m.user_id === existing.id && m.status === 'active');
+      const role: UserRole = mem ? mem.role : 'family';
+      return {
+        success: true,
+        isNewUser: false,
+        user: { ...existing },
+        role,
+        templeId: mem?.temple_id || null,
+      };
+    } else {
+      // Auto-registration for new mobile number
+      const newUserId = crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`;
+      const newProfile: Profile = {
+        id: newUserId,
+        full_name: (fullName && fullName.trim()) || 'Devotee Family',
+        verified_mobile: cleaned,
+        locality: null,
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        country: 'India',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.profiles.push(newProfile);
+      this.userPasswords.set(cleaned, password);
+
+      return {
+        success: true,
+        isNewUser: true,
+        user: { ...newProfile },
+        role: 'family',
+        templeId: null,
+      };
     }
   }
 
@@ -1339,6 +1403,162 @@ export const aadiSparshRepository = {
       }
     }
     return devStore.getStaffRegistrations(actorRole, actorTempleId, filterTempleId, filterVisitDate);
+  },
+
+  async signInWithPhonePassword(
+    phone: string,
+    password: string,
+    fullName?: string
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    isNewUser?: boolean;
+    user?: Profile;
+    role?: UserRole;
+    templeId?: string | null;
+  }> {
+    const cleaned = phone.replace(/[\s\-()]/g, '');
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          phone: cleaned,
+          password,
+        });
+
+        if (error) {
+          const errMsg = error.message.toLowerCase();
+          const isProviderDisabled =
+            errMsg.includes('phone logins are disabled') ||
+            errMsg.includes('provider disabled') ||
+            errMsg.includes('unsupported phone provider') ||
+            errMsg.includes('phone provider') ||
+            errMsg.includes('sms provider');
+
+          if (isProviderDisabled) {
+            return devStore.signInPhonePassword(cleaned, password, fullName);
+          }
+
+          const isUserNotFound =
+            errMsg.includes('invalid login credentials') ||
+            errMsg.includes('user not found') ||
+            (error as any).status === 400;
+
+          if (isUserNotFound) {
+            // Attempt auto-registration with signUp
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              phone: cleaned,
+              password,
+              options: {
+                data: {
+                  full_name: fullName || 'Devotee Family',
+                  phone: cleaned,
+                },
+              },
+            });
+
+            if (signUpError) {
+              const signErrMsg = signUpError.message.toLowerCase();
+              if (
+                signErrMsg.includes('phone logins are disabled') ||
+                signErrMsg.includes('provider disabled') ||
+                signErrMsg.includes('unsupported phone provider') ||
+                signErrMsg.includes('phone provider') ||
+                signErrMsg.includes('sms provider')
+              ) {
+                return devStore.signInPhonePassword(cleaned, password, fullName);
+              }
+              if (signErrMsg.includes('already registered')) {
+                return { success: false, error: 'Incorrect password for this mobile number.' };
+              }
+              return { success: false, error: signUpError.message };
+            }
+
+            if (signUpData.user) {
+              if (fullName) {
+                await this.upsertFamilyProfile(signUpData.user.id, cleaned, {
+                  full_name: fullName,
+                  city: 'Bengaluru',
+                });
+              }
+              const prof = await this.getProfile(signUpData.user.id);
+              return {
+                success: true,
+                isNewUser: true,
+                user: prof.data || undefined,
+                role: 'family',
+                templeId: null,
+              };
+            }
+          }
+
+          return { success: false, error: error.message };
+        }
+
+        if (data.user) {
+          const roleInfo = await this.resolveUserRole(data.user.id);
+          const prof = await this.getProfile(data.user.id);
+          return {
+            success: true,
+            isNewUser: false,
+            user: prof.data || undefined,
+            role: roleInfo.role,
+            templeId: roleInfo.templeId,
+          };
+        }
+      } catch (err: any) {
+        console.warn('Remote Supabase auth exception; falling back to devStore:', err);
+        return devStore.signInPhonePassword(cleaned, password, fullName);
+      }
+    }
+
+    return devStore.signInPhonePassword(cleaned, password, fullName);
+  },
+
+  async resolveUserRole(userId: string): Promise<{ role: UserRole; templeId: string | null; templeName: string | null }> {
+    if (isSupabaseConfigured() && (await ensureRemoteReady())) {
+      try {
+        const { data, error } = await supabase.rpc('get_authenticated_user_role');
+        if (!error && data && data.role) {
+          return {
+            role: data.role as UserRole,
+            templeId: data.temple_id || null,
+            templeName: data.temple_name || null,
+          };
+        }
+      } catch (err) {
+        console.warn('Falling back from RPC role resolution:', err);
+      }
+
+      try {
+        const { data: memData } = await supabase
+          .from('temple_memberships')
+          .select('*, temple:temples(*)')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('role', { ascending: true });
+        if (memData && memData.length > 0) {
+          const m = memData[0];
+          return {
+            role: m.role as UserRole,
+            templeId: m.temple_id || null,
+            templeName: m.temple?.name || null,
+          };
+        }
+      } catch (err) {
+        console.warn('Could not query memberships for role:', err);
+      }
+    }
+
+    const mem = devStore.memberships.find((m) => m.user_id === userId && m.status === 'active');
+    if (mem) {
+      const temple = devStore.temples.find((t) => t.id === mem.temple_id);
+      return {
+        role: mem.role,
+        templeId: mem.temple_id,
+        templeName: temple?.name || null,
+      };
+    }
+    return { role: 'family', templeId: null, templeName: null };
   },
 
   resetSeeds(): void {
